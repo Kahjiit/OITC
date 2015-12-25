@@ -50,6 +50,7 @@ public class Commands implements CommandExecutor {
 					}
 					Arena arena = Manager.getArena(player);
 					arena.removePlayer(player);
+					arena.sendArenaMessage(OITC.prefix + player.getName() + " has left the game.");
 					Manager.removePlayer(player);
 					player.sendMessage(OITC.prefix + "You have left your current arena.");
 				}
@@ -63,7 +64,7 @@ public class Commands implements CommandExecutor {
 					}
 				}
 			}
-			
+
 			if (args.length == 2) {
 				if (args[0].equalsIgnoreCase("join")) {
 					if (!Manager.arenaExists(args[1])) {
@@ -71,13 +72,19 @@ public class Commands implements CommandExecutor {
 						return true;
 					}
 					Arena arena = Manager.getArena(args[1]);
-					if (arena.getState() != State.WAITING) {
+					if (arena.getState() == State.INGAME || arena.getState() == State.RESTARTING) {
 						player.sendMessage(OITC.prefix + "You can't join that arena as it isn't joinable now!");
 						return true;
 					}
 					if (arena.getPlayers().size() < arena.getMaxPlayers()) {
 						arena.addPlayer(player);
-						player.sendMessage(OITC.prefix + "You have joined the arena: " + arena.getName() + "!");
+						arena.sendArenaMessage(OITC.prefix + ChatColor.RED + player.getName() + ChatColor.AQUA
+								+ " has joined the arena. " + ChatColor.RESET + "[" + ChatColor.GOLD + arena.getPlayers().size()
+								+ ChatColor.RESET + "/" + ChatColor.GOLD + arena.getMaxPlayers() + ChatColor.RESET + "]");
+						if (arena.getState() == State.STARTING) {
+							player.teleport(arena.getNextSpawn());
+							arena.setDefaultInventory(player);
+						}
 					}
 					else {
 						player.sendMessage(OITC.prefix + "That arena is full! Try again later.");
