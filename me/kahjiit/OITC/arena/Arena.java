@@ -6,10 +6,15 @@ import java.util.List;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Scoreboard;
 
 import me.kahjiit.OITC.OITC;
 import me.kahjiit.OITC.misc.Settings;
@@ -19,6 +24,7 @@ public class Arena {
 	OITC plugin;
 	private String name;
 	private int countdown, id;
+	private int index = 1;
 	private State state = State.WAITING;
 	private List<Player> players = new ArrayList<Player>();
 	private HashMap<Player, ItemStack[]> armor = new HashMap<Player, ItemStack[]>();
@@ -67,7 +73,14 @@ public class Arena {
 			player.getInventory().clear();
 			loadInventory(player);
 			player.teleport(player.getWorld().getSpawnLocation());
+			player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
 			updateSign();
+			if (getState() == State.INGAME || getState() == State.STARTING) {
+				if (players.size() <= 1) {
+					sendArenaMessage(OITC.prefix + ChatColor.AQUA + "The game has been cancelled because too many players have left!");
+					stop();
+				}
+			}
 		}
 	}
 	
@@ -96,18 +109,34 @@ public class Arena {
 	}
 	
 	public boolean canStart() {
-		if (getState() == State.WAITING && players.size() >= getAutoStartPlayers()) {
+		if (getState() == State.WAITING && players.size() >= getAutoStartPlayers() && !isRunning()) {
 			return true;
 		}
 		return false;
 	}
-
+	
 	public int getAutoStartPlayers() {
 		return Settings.getInstance().config.getInt("Arenas." + name + ".AutoStartPlayers");
 	}
 	
+	public int getKillsToWin() {
+		return Settings.getInstance().config.getInt("Arenas," + name + ".KillsToWin");
+	}
+	
 	public int getMaxPlayers() {
 		return Settings.getInstance().config.getInt("Arenas." + name + ".MaxPlayers");
+	}
+	
+	public Location getNextSpawn() {
+		if (Settings.getInstance().arenas.contains(name + ".Spawns.Spawn" + index)) {
+			Location location = Settings.getInstance().getLocation(name + ".Spawns.Spawn" + index);
+			index ++;
+			if (index > getMaxPlayers()) {
+				index = 1;
+			}
+			return location;
+		}
+		return null;
 	}
 	
 	public boolean hasEnoughPlayers() {
@@ -151,6 +180,14 @@ public class Arena {
 		player.getInventory().addItem(arrow);
 	}
 	
+	public void setGamemodes(GameMode gm) {
+		for (Player player : players) {
+			if (player != null) {
+				player.setGameMode(gm);
+			}
+		}
+	}
+	
 	public void setInventories() {
 		for (Player player : players) {
 			if (player != null) {
@@ -159,8 +196,31 @@ public class Arena {
 		}
 	}
 	
+	public void setScoreboards() {
+		Scoreboard sb = Bukkit.getScoreboardManager().getNewScoreboard();
+		Objective objective = sb.registerNewObjective(ChatColor.GOLD + "OITC", "oitc");
+		objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+		
+		for (Player player : players) {
+			if (player != null) {
+				objective.getScore(player.getName()).setScore(0);
+				player.setScoreboard(sb);
+			}
+		}
+	}
+	
+	public void spawnPlayers() {
+		for (Player player : players) {
+			if (player != null) {
+				player.teleport(getNextSpawn());
+			}
+		}
+	}
+	
 	public void start() {
+		setGamemodes(GameMode.ADVENTURE);
 		setInventories();
+		spawnPlayers();
 		countdown = Settings.getInstance().config.getInt("Arenas." + name + ".Countdown");
 		id = Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, new Runnable() {
 			public void run() {
@@ -170,16 +230,17 @@ public class Arena {
 					if (countdown % 5 == 0 || countdown < 5) {
 						sendArenaMessage(OITC.prefix + "The game will start in " + countdown + " seconds!");
 					}
-					/* if (!hasEnoughPlayers()) {
+					if (!hasEnoughPlayers()) {
 						sendArenaMessage(OITC.prefix + "The countdown has been cancelled due to the low amount of players!");
 						stop();
-					} */
+					}
 				}
 				else {
 					Bukkit.getScheduler().cancelTask(id);
 					setState(State.INGAME);
 					sendArenaMessage(OITC.prefix + "Eliminate other players.");
 					
+					setScoreboards();
 					healPlayers();
 					updateSign();
 				}
@@ -195,15 +256,19 @@ public class Arena {
 			updateSign();
 			for (Player player : players) {
 				player.getInventory().clear();
+				removePlayer(player);
+				addPlayer(player);
 			}
 			return;
 		}
 		setState(State.RESTARTING);
+		setGamemodes(GameMode.SURVIVAL);
 		updateSign();
 		healPlayers();
 		for (Player player : players) {
 			if (player != null) {
 				player.teleport(player.getWorld().getSpawnLocation());
+				player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
 				Manager.removePlayer(player);
 				loadInventory(player);
 			}
