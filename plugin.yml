@@ -1,0 +1,7 @@
+name: OITC
+main: me.kahjiit.OITC.OITC
+version: 1.02
+commands:
+    oitc:
+        description: Main command
+        usage: /oitc
